@@ -5,40 +5,27 @@
 #include <Arduino.h>
 #include <WebServer.h>
 #include <WiFi.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
 class DisplayOutputs {
 public:
-  // ==========================================
-  // SINGLETON
-  // ==========================================
   static DisplayOutputs &get();
-
-  /**
-   * @brief Initializes the WiFi Access Point and starts the Web Server.
-   */
   void initialize();
-
-  /**
-   * @brief Must be called continuously in the main loop to handle web requests.
-   */
   void handleClient();
-
-  /**
-   * @brief Can be use to run the testing/debugging for instant demo. Instant
-   * rfid bypassed, executing the countdown immediately.
-   * *
-   * */
-  void handleSimulateRfid();
+  
+  // LCD Helper
+  void lcdPrint(String line1, String line2);
 
 private:
-  DisplayOutputs() = default;
+  DisplayOutputs() : lcd(0x27, 16, 2) {} // Change 0x27 to 0x3F if screen is blank
   ~DisplayOutputs() = default;
   DisplayOutputs(const DisplayOutputs &) = delete;
   DisplayOutputs &operator=(const DisplayOutputs &) = delete;
 
   WebServer server{80};
+  LiquidCrystal_I2C lcd;
 
-  // Route handlers
   void setupRoutes();
   void handleRoot();
   void handleStart();

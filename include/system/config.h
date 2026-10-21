@@ -6,19 +6,18 @@
 // ==========================================
 // 1. PIN CONFIGURATION
 // ==========================================
-// --- RC522 RFID Module Pins ---
 #define RFID_SS_PIN 5
-#define RFID_RST_PIN 22
-
-// --- Shared SPI Bus Pins (Used by the RFID reader) ---
+#define RFID_RST_PIN 4  // Moved to 4 to avoid LCD conflict
+#define LCD_SDA_PIN 21
+#define LCD_SCL_PIN 22
 #define SPI_SCK_PIN 18
 #define SPI_MISO_PIN 19
 #define SPI_MOSI_PIN 23
-
+#define FEEDBACK_BUZZER 26
 // ==========================================
 // 2. DISPLAY STATES
 // ==========================================
-enum class DisplayState { HOME, RULES, COUNTDOWN, SUCCESS, ERROR };
+enum class DisplayState { SCAN_PASS, HOME, SCAN_ID, COUNTDOWN, SUCCESS, ERROR };
 
 // ==========================================
 // 3. SYSTEM CONFIG (Singleton)
@@ -30,56 +29,64 @@ public:
     return instance;
   }
 
-  // --- Authorized RFID ID ---
-  // UID: B4 3F B9 E3
-  const byte authorizedHallwayPass[4] = {0xB4, 0x3F, 0xB9, 0xE3};
+  // ==========================================
+  // AUTHORIZED CARDS
+  // ==========================================
+  const byte AuthorizedMalePassCard[4]   = {0x1B, 0xD9, 0xB8, 0xE3};
+  const byte AuthorizedFemalePassCard[4] = {0xB4, 0x3F, 0xB9, 0xE3};
+  const byte AuthorizedStudentID_1[4] = {0x90, 0x04, 0x40, 0x64}; // Robin (Male)
+  const byte AuthorizedStudentID_2[4] = {0xE0, 0xE6, 0x03, 0x64}; // Emman (Female)
 
   // ==========================================
   // APP STATE VARIABLES
   // ==========================================
-  DisplayState currentState = DisplayState::HOME;
-  String studentName = "";
+  DisplayState currentState = DisplayState::SCAN_PASS; 
+  String passCardGender = ""; 
+  String studentName = "";    
   String selectedDestination = "";
   int timeLimitMinutes = 0;
   unsigned long countdownEndTime = 0;
+  
+  // Store the IP address to show on the LCD
+  String serverIP = ""; 
 
   // ==========================================
   // HELPER METHODS
   // ==========================================
-
-  /**
-   * @brief Sets the destination and calculates the time limit.
-   * Faculty -> 15m, Restroom -> 10m, Clinic -> 20m
-   */
   void setDestination(const String &dest) {
     selectedDestination = dest;
-
-    if (dest == "Faculty") {
-      timeLimitMinutes = 15;
-    } else if (dest == "Restroom") {
-      timeLimitMinutes = 10;
-    } else if (dest == "Clinic") {
-      timeLimitMinutes = 20;
-    } else {
-      timeLimitMinutes = 0;
-    }
+    if (dest == "Faculty") timeLimitMinutes = 15;
+    else if (dest == "Restroom") timeLimitMinutes = 1;
+    else if (dest == "Clinic") timeLimitMinutes = 20;
+    else timeLimitMinutes = 0;
   }
 
-  /**
-   * @brief Starts the countdown timer.
-   */
   void startTimer() {
     countdownEndTime = millis() + (timeLimitMinutes * 60 * 1000UL);
   }
 
-  /**
-   * @brief Gets the remaining time in seconds.
-   */
   int getSecondsRemaining() {
     unsigned long now = millis();
-    if (now >= countdownEndTime)
-      return 0;
+    if (now >= countdownEndTime) return 0;
     return (countdownEndTime - now) / 1000;
+  }
+
+  String getPassGender(byte* uid) {
+    if (memcmp(uid, AuthorizedMalePassCard, 4) == 0) return "Male";
+    if (memcmp(uid, AuthorizedFemalePassCard, 4) == 0) return "Female";
+    return "";
+  }
+
+  String getStudentName(byte* uid) {
+    if (memcmp(uid, AuthorizedStudentID_1, 4) == 0) return "Robin Carl Sipocot";
+    if (memcmp(uid, AuthorizedStudentID_2, 4) == 0) return "Emman Layug";
+    return "";
+  }
+
+  String getStudentGender(byte* uid) {
+    if (memcmp(uid, AuthorizedStudentID_1, 4) == 0) return "Male";
+    if (memcmp(uid, AuthorizedStudentID_2, 4) == 0) return "Female";
+    return "";
   }
 
 private:
