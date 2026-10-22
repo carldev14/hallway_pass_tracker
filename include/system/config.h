@@ -56,7 +56,7 @@ public:
   void setDestination(const String &dest) {
     selectedDestination = dest;
     if (dest == "Faculty") timeLimitMinutes = 15;
-    else if (dest == "Restroom") timeLimitMinutes = 1;
+    else if (dest == "Restroom") timeLimitMinutes = 10;
     else if (dest == "Clinic") timeLimitMinutes = 20;
     else timeLimitMinutes = 0;
   }
