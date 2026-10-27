@@ -14,6 +14,10 @@
 #define SPI_MISO_PIN 19
 #define SPI_MOSI_PIN 23
 #define FEEDBACK_BUZZER 26
+#define FEMALE_SLOT 32
+#define MALE_SLOT 33
+
+
 // ==========================================
 // 2. DISPLAY STATES
 // ==========================================

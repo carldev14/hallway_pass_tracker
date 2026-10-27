@@ -12,9 +12,12 @@ void Inputs::initializeInputs() {
   
   // Initialize Buzzer Pin
   pinMode(FEEDBACK_BUZZER, OUTPUT);
+  pinMode(MALE_SLOT, INPUT);
+  pinMode(FEMALE_SLOT, INPUT);
+
   digitalWrite(FEEDBACK_BUZZER, LOW);
 
-  Serial.println("RFID Reader & Buzzer Initialized.");
+  Serial.println("RFID Reader, IR SENSOR,  Buzzer Initialized.");
 }
 
 bool Inputs::scanCard() {
@@ -88,4 +91,28 @@ bool Inputs::isStudentIDValid() {
   }
   
   return false;
+}
+
+
+bool Inputs::isCardInSlot()
+{
+    int femaleRaw = digitalRead(FEMALE_SLOT);
+    int maleRaw   = digitalRead(MALE_SLOT);
+
+    // LOW = card present; HIGH = empty
+    bool femalePresent = (femaleRaw == LOW);
+    bool malePresent   = (maleRaw == LOW);
+
+    bool bothCardsPresent = femalePresent && malePresent;
+
+    Serial.print("[SLOT] Female: ");
+    Serial.print(femalePresent ? "PRESENT" : "EMPTY");
+
+    Serial.print(" | Male: ");
+    Serial.print(malePresent ? "PRESENT" : "EMPTY");
+
+    Serial.print(" | Both present: ");
+    Serial.println(bothCardsPresent ? "YES" : "NO");
+
+    return bothCardsPresent;
 }

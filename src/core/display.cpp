@@ -378,7 +378,7 @@ void DisplayOutputs::handleRoot() {
   <main class="container">
 
     <header class="header">
-      <div class="anniversary">Manuel S. Enverga</div>
+      <div class="anniversary">Manuel S. Enverga University</div>
       <h1>HALLWAY PASS</h1>
       <p>ONE LEGACY, ONE GLOBAL VISION</p>
     </header>

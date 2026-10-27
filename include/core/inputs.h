@@ -18,6 +18,8 @@ public:
   void beepSuccess();
   void beepError();
 
+  bool isCardInSlot(); // Verify if card is exists
+
 private:
   MFRC522 rfid_{RFID_SS_PIN, RFID_RST_PIN};
   Inputs() = default;
