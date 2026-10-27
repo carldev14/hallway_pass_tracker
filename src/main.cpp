@@ -1,10 +1,11 @@
-#include <Arduino.h>
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <UniversalTelegramBot.h>
 #include "core/display.h"
 #include "core/inputs.h"
+#include "esp32-hal.h"
 #include "system/config.h"
+#include <Arduino.h>
+#include <UniversalTelegramBot.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
 
 #define BOT_TOKEN "8882655287:AAHzLTLjejSFGE7IBSxwBf1uzPooyHI12w4"
 #define CHAT_ID "-1004340850040"
@@ -12,12 +13,12 @@
 WiFiClientSecure secured_client;
 UniversalTelegramBot bot(BOT_TOKEN, secured_client);
 
-void sendTelegramAlert(String studentName, String gender, String destination, int minutes)
-{
+void sendTelegramAlert(String studentName, String gender, String destination,
+                       int minutes) {
   secured_client.setInsecure();
   String message = "🚨 *HALLWAY PASS VIOLATION* 🚨\n\n";
   message += "Class: *Altair 12 - ICT*\n";
-  message += "Student: *" + studentName + "*\n";
+  message += " *" + studentName + "*\n";
   message += "Gender: *" + gender + "*\n";
   message += "Destination: *" + destination + "*\n";
   message += "Time Limit: " + String(minutes) + " minutes\n\n";
@@ -29,14 +30,14 @@ void sendTelegramAlert(String studentName, String gender, String destination, in
     Serial.println("❌ Telegram failed.");
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
   delay(1000);
 
   DisplayOutputs::get().initialize();
   Inputs::get().initializeInputs();
 
+  // Sync time. Real time is required for secure SSL connections.
   Serial.println("[NTP] Syncing time...");
   configTime(0, 0, "pool.ntp.org", "time.google.com");
 
@@ -45,41 +46,31 @@ void setup()
 
   time_t now = time(nullptr);
 
-  while (now < 24 * 3600 &&
-         millis() - ntpStart < NTP_TIMEOUT)
-  {
+  while (now < 24 * 3600 && millis() - ntpStart < NTP_TIMEOUT) {
     delay(250);
     now = time(nullptr);
   }
 
-  if (now >= 24 * 3600)
-  {
+  if (now >= 24 * 3600) {
     Serial.println("[NTP] Time synchronized.");
-  }
-  else
-  {
+  } else {
     Serial.println("[NTP] Sync failed or timed out.");
     Serial.println("[NTP] Continuing without synchronized time.");
   }
 
+  DisplayOutputs::get().lcdPrint("HWPass Guard", "Choose card.");
   SystemConfig::get().currentState = DisplayState::SCAN_PASS;
 }
 
-void loop()
-{
+void loop() {
   SystemConfig &config = SystemConfig::get();
   // Keep the web server responsive.
   DisplayOutputs::get().handleClient();
-  
+
   // ==========================================
   // SLOT RACE TRACKING / 30-SECOND TIMEOUT
   // ==========================================
-  enum class RemovedSlot
-  {
-    NONE,
-    FEMALE,
-    MALE
-  };
+  enum class RemovedSlot { NONE, FEMALE, MALE };
 
   static bool initialized = false;
   static bool previousFemalePresent = false;
@@ -104,9 +95,7 @@ void loop()
   // LOW = CARD PRESENT
   // HIGH = SLOT EMPTY
   // ==========================================
-  if (!initialized ||
-      millis() - lastSensorCheck >= SENSOR_INTERVAL)
-  {
+  if (!initialized || millis() - lastSensorCheck >= SENSOR_INTERVAL) {
     lastSensorCheck = millis();
 
     femalePresent = (digitalRead(FEMALE_SLOT) == LOW);
@@ -117,62 +106,46 @@ void loop()
     Serial.print(" | Male: ");
     Serial.println(malePresent ? "PRESENT" : "EMPTY");
 
-    if (!initialized)
-    {
+    if (!initialized) {
       initialized = true;
       previousFemalePresent = femalePresent;
       previousMalePresent = malePresent;
 
       Serial.println("[INIT] Sensor states initialized.");
-    }
-    else
-    {
-      bool femaleJustRemoved =
-          previousFemalePresent && !femalePresent;
+    } else {
+      bool femaleJustRemoved = previousFemalePresent && !femalePresent;
 
-      bool maleJustRemoved =
-          previousMalePresent && !malePresent;
+      bool maleJustRemoved = previousMalePresent && !malePresent;
 
       // Detect which slot was emptied first.
-      if (firstRemovedSlot == RemovedSlot::NONE)
-      {
-        if (femaleJustRemoved && maleJustRemoved)
-        {
-          Serial.println(
-              "[RACE] Both slots emptied between checks.");
-        }
-        else if (femaleJustRemoved)
-        {
+      if (firstRemovedSlot == RemovedSlot::NONE) {
+        if (femaleJustRemoved && maleJustRemoved) {
+          Serial.println("[RACE] Both slots emptied between checks.");
+        } else if (femaleJustRemoved) {
           firstRemovedSlot = RemovedSlot::FEMALE;
           removalStartedAt = millis();
           timerActive = true;
 
-          Serial.println(
-              "[RACE] Female slot emptied first.");
-          Serial.println(
-              "[TIMER] 30-second authentication timer started.");
-        }
-        else if (maleJustRemoved)
-        {
+          DisplayOutputs::get().lcdPrint("Removed HWPass:", "Tap within 30s");
+          Serial.println("[RACE] Female slot emptied first.");
+          Serial.println("[TIMER] 30-second authentication timer started.");
+        } else if (maleJustRemoved) {
           firstRemovedSlot = RemovedSlot::MALE;
           removalStartedAt = millis();
           timerActive = true;
 
-          Serial.println(
-              "[RACE] Male slot emptied first.");
-          Serial.println(
-              "[TIMER] 30-second authentication timer started.");
+          DisplayOutputs::get().lcdPrint("Removed HWPass:", "Tap within 30s");
+          Serial.println("[RACE] Male slot emptied first.");
+          Serial.println("[TIMER] 30-second authentication timer started.");
         }
       }
 
       // Reset only when BOTH cards are back.
-      if (femalePresent && malePresent)
-      {
-        if (firstRemovedSlot != RemovedSlot::NONE ||
-            timeoutLockout)
-        {
-          Serial.println(
-              "[RACE] Both cards returned. System reset.");
+      if (femalePresent && malePresent) {
+        if (firstRemovedSlot != RemovedSlot::NONE || timeoutLockout) {
+          Serial.println("[RACE] Both cards returned. System reset.");
+          DisplayOutputs::get().lcdPrint("Reseated both.", "Proceding.");
+          delay(2000);
         }
 
         firstRemovedSlot = RemovedSlot::NONE;
@@ -194,24 +167,23 @@ void loop()
   // AUTHENTICATION TIMEOUT
   // ==========================================
   if (timerActive &&
-      (unsigned long)(millis() - removalStartedAt) >= SCAN_TIMEOUT)
-  {
+      (unsigned long)(millis() - removalStartedAt) >= SCAN_TIMEOUT) {
     timerActive = false;
     timeoutLockout = true;
 
     Serial.println("[REVOKE] Authentication request expired.");
     Serial.println("[LOCKOUT] Return both cards to their slots.");
 
-    DisplayOutputs::get().lcdPrint(
-        "Revoked.", "Slot card to proceed");
+    DisplayOutputs::get().lcdPrint("Revoked: Reseat", "to proceed...");
+
+    Inputs::get().beepRevokedRequest(); // Beep when revoked.
   }
 
   // ==========================================
   // LOCKOUT
   // Block all processing until both cards return.
   // ==========================================
-  if (timeoutLockout)
-  {
+  if (timeoutLockout) {
     // Refresh sensor state every second while locked.
     // The next loop iteration checks for returned cards.
     return;
@@ -221,54 +193,40 @@ void loop()
   // HALLWAY GUARD LCD
   // Display only once while both cards are present.
   // ==========================================
-  if (femalePresent && malePresent)
-  {
-    if (!guardMessageDisplayed)
-    {
-      DisplayOutputs::get().lcdPrint("Hallway", "Guard");
+  if (femalePresent && malePresent) {
+    if (!guardMessageDisplayed) {
+      DisplayOutputs::get().lcdPrint("HWPass Guard", "Choose card.");
       guardMessageDisplayed = true;
 
       Serial.println("[LCD] Hallway Guard displayed.");
     }
-  }
-  else
-  {
+  } else {
     guardMessageDisplayed = false;
   }
-
-
 
   // ==========================================
   // STATE 1: SCAN PASS CARD
   // ==========================================
-  if (config.currentState == DisplayState::SCAN_PASS)
-  {
+  if (config.currentState == DisplayState::SCAN_PASS) {
     // Allow authentication as soon as either slot is empty.
-    if (femalePresent && malePresent)
-    {
+    if (femalePresent && malePresent) {
       return;
     }
 
-    if (Inputs::get().scanCard())
-    {
-      if (Inputs::get().isPassCardValid())
-      {
+    if (Inputs::get().scanCard()) {
+      if (Inputs::get().isPassCardValid()) {
         timerActive = false;
         firstRemovedSlot = RemovedSlot::NONE;
 
         config.currentState = DisplayState::HOME;
 
-        DisplayOutputs::get().lcdPrint(
-            "Card authorized.", "Scan QRCode");
+        DisplayOutputs::get().lcdPrint("Request allowed.", "Scan QRCode");
 
         Serial.println("[AUTH] Pass card authorized.");
-      }
-      else
-      {
-        DisplayOutputs::get().lcdPrint(
-            "Access Denied.", "Use Pass Card");
+      } else {
+        DisplayOutputs::get().lcdPrint("Access Denied.", "Use HWPass card");
 
-        Serial.println("[AUTH] Invalid pass card.");
+        Serial.println("[AUTH] Invalid HWPass card.");
       }
 
       Inputs::get().haltCard();
@@ -280,30 +238,22 @@ void loop()
   // ==========================================
   // STATE 2: SCAN STUDENT ID
   // ==========================================
-  if (config.currentState == DisplayState::SCAN_ID)
-  {
-    if (Inputs::get().scanCard())
-    {
-      if (Inputs::get().isStudentIDValid())
-      {
+  if (config.currentState == DisplayState::SCAN_ID) {
+    if (Inputs::get().scanCard()) {
+      if (Inputs::get().isStudentIDValid()) {
         config.startTimer();
         config.currentState = DisplayState::COUNTDOWN;
 
-        DisplayOutputs::get().lcdPrint(
-            "ID Verified!", "Starting timer.");
+        DisplayOutputs::get().lcdPrint("ID Verified!", "Starting timer.");
 
         delay(1500);
 
-        DisplayOutputs::get().lcdPrint(
-            "Return Card", "within time limit.");
+        DisplayOutputs::get().lcdPrint("Return Card", "within time limit.");
 
         Serial.print("[ID] Verified: ");
         Serial.println(config.studentName);
-      }
-      else
-      {
-        DisplayOutputs::get().lcdPrint(
-            "ID Failed.", "Wrong Gender/ID.");
+      } else {
+        DisplayOutputs::get().lcdPrint("ID Failed.", "Wrong Gender/ID.");
 
         Serial.println("[ID] Verification failed.");
       }
@@ -317,16 +267,12 @@ void loop()
   // ==========================================
   // STATE 3: COUNTDOWN / RETURN PASS CARD
   // ==========================================
-  if (config.currentState == DisplayState::COUNTDOWN)
-  {
-    if (Inputs::get().scanCard())
-    {
-      if (Inputs::get().isPassCardValid())
-      {
+  if (config.currentState == DisplayState::COUNTDOWN) {
+    if (Inputs::get().scanCard()) {
+      if (Inputs::get().isPassCardValid()) {
         config.currentState = DisplayState::SUCCESS;
 
-        DisplayOutputs::get().lcdPrint(
-            "Pass Recorded.", "Thank you!");
+        DisplayOutputs::get().lcdPrint("Pass Recorded.", "Thank you!");
 
         Serial.println("[PASS] Card returned successfully.");
 
@@ -338,8 +284,7 @@ void loop()
         config.studentName = "";
         config.passCardGender = "";
 
-        DisplayOutputs::get().lcdPrint(
-            "Tap Pass Card", "To login.");
+        DisplayOutputs::get().lcdPrint("Tap Pass Card", "To login.");
 
         return;
       }
@@ -347,20 +292,15 @@ void loop()
       Inputs::get().haltCard();
     }
 
-    if (config.getSecondsRemaining() <= 0)
-    {
+    if (config.getSecondsRemaining() <= 0) {
       config.currentState = DisplayState::ERROR;
 
-      DisplayOutputs::get().lcdPrint(
-          "VIOLATION!", "Return card now.");
+      DisplayOutputs::get().lcdPrint("VIOLATION!", "Return card now.");
 
       Serial.println("[VIOLATION] Time limit exceeded.");
 
-      sendTelegramAlert(
-          config.studentName,
-          config.passCardGender,
-          config.selectedDestination,
-          config.timeLimitMinutes);
+      sendTelegramAlert(config.studentName, config.passCardGender,
+                        config.selectedDestination, config.timeLimitMinutes);
 
       delay(5000);
 
@@ -368,8 +308,7 @@ void loop()
       config.studentName = "";
       config.passCardGender = "";
 
-      DisplayOutputs::get().lcdPrint(
-          "Tap Pass Card", "To login.");
+      DisplayOutputs::get().lcdPrint("Tap Pass Card", "To login.");
     }
 
     return;

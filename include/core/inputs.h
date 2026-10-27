@@ -17,6 +17,7 @@ public:
   bool isStudentIDValid();
   void beepSuccess();
   void beepError();
+  void beepRevokedRequest();
 
   bool isCardInSlot(); // Verify if card is exists
 

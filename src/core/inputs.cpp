@@ -9,7 +9,7 @@ Inputs &Inputs::get() {
 void Inputs::initializeInputs() {
   SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, RFID_SS_PIN);
   rfid_.PCD_Init();
-  
+
   // Initialize Buzzer Pin
   pinMode(FEEDBACK_BUZZER, OUTPUT);
   pinMode(MALE_SLOT, INPUT);
@@ -21,8 +21,10 @@ void Inputs::initializeInputs() {
 }
 
 bool Inputs::scanCard() {
-  if (!rfid_.PICC_IsNewCardPresent()) return false;
-  if (!rfid_.PICC_ReadCardSerial()) return false;
+  if (!rfid_.PICC_IsNewCardPresent())
+    return false;
+  if (!rfid_.PICC_ReadCardSerial())
+    return false;
   return true;
 }
 
@@ -51,19 +53,37 @@ void Inputs::beepError() {
   digitalWrite(FEEDBACK_BUZZER, LOW);
 }
 
+void Inputs::beepRevokedRequest() {
+  digitalWrite(FEEDBACK_BUZZER, HIGH);
+  delay(150); // Short crisp beep
+  digitalWrite(FEEDBACK_BUZZER, LOW);
+  delay(150);
+  digitalWrite(FEEDBACK_BUZZER, HIGH);
+  delay(150); // Short crisp beep
+  digitalWrite(FEEDBACK_BUZZER, LOW);
+  delay(150);
+  digitalWrite(FEEDBACK_BUZZER, HIGH);
+  delay(150); // Short crisp beep
+  digitalWrite(FEEDBACK_BUZZER, LOW);
+  delay(150);
+  digitalWrite(FEEDBACK_BUZZER, HIGH);
+  delay(150); // Short crisp beep
+  digitalWrite(FEEDBACK_BUZZER, LOW);
+}
+
 // ==========================================
 // CARD VALIDATION
 // ==========================================
 bool Inputs::isPassCardValid() {
   SystemConfig &config = SystemConfig::get();
   String gender = config.getPassGender(rfid_.uid.uidByte);
-  
+
   if (gender != "") {
     beepSuccess();
     config.passCardGender = gender;
     return true;
   }
-  
+
   beepError();
   return false;
 }
@@ -79,7 +99,7 @@ bool Inputs::isStudentIDValid() {
     config.studentName = name;
     return true;
   }
-  
+
   // If they tapped the wrong student ID (e.g., Emman tries to use Male Pass)
   if (name != "") {
     beepError();
@@ -89,30 +109,28 @@ bool Inputs::isStudentIDValid() {
     beepError();
     Serial.println("❌ Error: Unknown Card.");
   }
-  
+
   return false;
 }
 
+bool Inputs::isCardInSlot() {
+  int femaleRaw = digitalRead(FEMALE_SLOT);
+  int maleRaw = digitalRead(MALE_SLOT);
 
-bool Inputs::isCardInSlot()
-{
-    int femaleRaw = digitalRead(FEMALE_SLOT);
-    int maleRaw   = digitalRead(MALE_SLOT);
+  // LOW = card present; HIGH = empty
+  bool femalePresent = (femaleRaw == LOW);
+  bool malePresent = (maleRaw == LOW);
 
-    // LOW = card present; HIGH = empty
-    bool femalePresent = (femaleRaw == LOW);
-    bool malePresent   = (maleRaw == LOW);
+  bool bothCardsPresent = femalePresent && malePresent;
 
-    bool bothCardsPresent = femalePresent && malePresent;
+  Serial.print("[SLOT] Female: ");
+  Serial.print(femalePresent ? "PRESENT" : "EMPTY");
 
-    Serial.print("[SLOT] Female: ");
-    Serial.print(femalePresent ? "PRESENT" : "EMPTY");
+  Serial.print(" | Male: ");
+  Serial.print(malePresent ? "PRESENT" : "EMPTY");
 
-    Serial.print(" | Male: ");
-    Serial.print(malePresent ? "PRESENT" : "EMPTY");
+  Serial.print(" | Both present: ");
+  Serial.println(bothCardsPresent ? "YES" : "NO");
 
-    Serial.print(" | Both present: ");
-    Serial.println(bothCardsPresent ? "YES" : "NO");
-
-    return bothCardsPresent;
+  return bothCardsPresent;
 }

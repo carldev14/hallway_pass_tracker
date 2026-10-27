@@ -1,7 +1,7 @@
 #include "core/display.h"
 #include "system/config.h"
-#include <WiFi.h>
 #include <LittleFS.h>
+#include <WiFi.h>
 
 DisplayOutputs &DisplayOutputs::get() {
   static DisplayOutputs instance;
@@ -10,74 +10,81 @@ DisplayOutputs &DisplayOutputs::get() {
 
 void DisplayOutputs::initialize() {
   // 1. Initialize the LCD display
-  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN); // Set up I2C using the configured SDA and SCL pins
-  lcd.init();                           // Initialize the LCD
-  lcd.backlight();                      // Turn on the LCD backlight
-  lcdPrint("Starting up...", "Please wait."); // Display startup message
+  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
+  lcd.init();
+  lcd.backlight();
+  lcdPrint("Starting up...", "Please wait.");
 
-  // 2. Initialize LittleFS file system
-  // LittleFS stores files, such as the university background image,
-  // in the ESP32's flash memory.
+  // 2. Initialize LittleFS
   if (!LittleFS.begin(true)) {
-    // Print an error if LittleFS fails to mount
     Serial.println("LittleFS mount failed");
-    return; // Stop initialization if LittleFS cannot be mounted
+    return;
   }
-
-  // Confirm that LittleFS is ready to access stored files
   Serial.println("LittleFS mounted successfully");
 
-  // 3. Connect the ESP32 to the Wi-Fi network
+  // 3. Connect the ESP32 to the Wi-Fi network (with retries)
   Serial.println("Connecting to Router...");
 
-  const char *ssid = "iss";           // Wi-Fi network name
-  const char *password = "robincarl"; // Wi-Fi password
+  // Ensure the wifi ESP32 going to connect are 2.4G and not 5G.
+  // This results to conflicts as ESP32 only accepts 2.4G and not 5G. Another
+  // thing, when use smartphone as proxy for router's behalf, expects automatic
+  // BAND bind of hotspot depending where the smartphone is connected.
+  const char *ssid = "iss4";
+  const char *password = "robincarl";
 
-  WiFi.mode(WIFI_STA);       // Set the ESP32 to station mode
-  WiFi.begin(ssid, password); // Start connecting to the Wi-Fi network
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
 
-  // Record the start time so the connection attempt has a time limit
-  unsigned long startAttemptTime = millis();
-
-  // Wait until connected or until 10 seconds have passed
-  while (WiFi.status() != WL_CONNECTED &&
-         millis() - startAttemptTime < 10000) {
-    delay(500);             // Wait half a second before checking again
-    Serial.print(".");      // Show connection progress in Serial Monitor
-  }
-
-  Serial.println(); // Move to a new line after the connection attempts
-
-  // Access the shared system configuration
   SystemConfig &config = SystemConfig::get();
 
-  // Check whether the ESP32 successfully connected to Wi-Fi
-  if (WiFi.status() == WL_CONNECTED) {
-    // Save the ESP32's assigned local IP address
+  const int MAX_ATTEMPTS = 3;
+  const unsigned long ATTEMPT_TIMEOUT = 10000UL; // 10s per attempt
+  bool connected = false;
+
+  for (int attempt = 1; attempt <= MAX_ATTEMPTS; ++attempt) {
+    Serial.printf("WiFi attempt %d/%d\n", attempt, MAX_ATTEMPTS);
+
+    WiFi.disconnect(false);
+    delay(200);
+    WiFi.begin(ssid, password);
+
+    unsigned long startAttemptTime = millis();
+    while (WiFi.status() != WL_CONNECTED &&
+           millis() - startAttemptTime < ATTEMPT_TIMEOUT) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
+
+    if (WiFi.status() == WL_CONNECTED) {
+      connected = true;
+      break;
+    }
+
+    Serial.printf("❌ Attempt %d failed. Status=%d\n", attempt, WiFi.status());
+    delay(1000); // brief pause before next attempt
+  }
+
+  // Handle result
+  if (connected) {
     config.serverIP = WiFi.localIP().toString();
 
-    // Print the web server address to Serial Monitor
     Serial.print("✅ Web Server IP: http://");
     Serial.println(config.serverIP);
+    Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
 
-    // Display the successful connection and IP address on the LCD
     lcdPrint("WiFi Connected!", "IP: " + config.serverIP);
   } else {
-    // Inform the user if the Wi-Fi connection failed
-    Serial.println("❌ WiFi Failed.");
+    Serial.printf("❌ WiFi Failed after %d attempts. Status=%d\n", MAX_ATTEMPTS,
+                  WiFi.status());
 
-    // Display an error message on the LCD
     lcdPrint("WiFi Failed!", "Check Network.");
   }
 
-  delay(2000); // Keep the connection status visible for 2 seconds
+  delay(2000);
 
-  // 4. Configure the HTTP routes for the web dashboard
-  // This includes the routes handled by setupRoutes(), such as
-  // the main dashboard and the background image, if configured there.
+  // 4. Configure HTTP routes and start the web server
   setupRoutes();
-
-  // Start the web server so the ESP32 can handle browser requests
   server.begin();
 }
 
@@ -85,7 +92,7 @@ void DisplayOutputs::initialize() {
 void DisplayOutputs::lcdPrint(String line1, String line2) {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print(line1.substring(0, 16)); 
+  lcd.print(line1.substring(0, 16));
   lcd.setCursor(0, 1);
   lcd.print(line2.substring(0, 16));
 }
@@ -610,7 +617,7 @@ void DisplayOutputs::handleStart() {
   SystemConfig &config = SystemConfig::get();
   if (server.hasArg("dest")) {
     config.setDestination(server.arg("dest"));
-    config.currentState = DisplayState::SCAN_ID; 
+    config.currentState = DisplayState::SCAN_ID;
   }
   server.send(200, "text/plain", "OK");
 }
@@ -621,25 +628,21 @@ void DisplayOutputs::handleStatus() {
 
   if (config.currentState == DisplayState::SCAN_PASS) {
     status = "SCAN_PASS";
-  } 
-  else if (config.currentState == DisplayState::HOME) {
+  } else if (config.currentState == DisplayState::HOME) {
     status = "HOME";
-  } 
-  else if (config.currentState == DisplayState::SCAN_ID) {
+  } else if (config.currentState == DisplayState::SCAN_ID) {
     status = "SCAN_ID";
-  } 
-  else if (config.currentState == DisplayState::COUNTDOWN) {
+  } else if (config.currentState == DisplayState::COUNTDOWN) {
     int secondsLeft = config.getSecondsRemaining();
     char timeStr[10];
     sprintf(timeStr, "%02d:%02d", secondsLeft / 60, secondsLeft % 60);
-    
+
     // Send Name, Gender, and Time to the frontend
-    status = "COUNTDOWN," + config.studentName + "," + config.passCardGender + "," + String(timeStr);
-  } 
-  else if (config.currentState == DisplayState::SUCCESS) {
+    status = "COUNTDOWN," + config.studentName + "," + config.passCardGender +
+             "," + String(timeStr);
+  } else if (config.currentState == DisplayState::SUCCESS) {
     status = "SUCCESS";
-  } 
-  else if (config.currentState == DisplayState::ERROR) {
+  } else if (config.currentState == DisplayState::ERROR) {
     status = "ERROR";
   }
 
