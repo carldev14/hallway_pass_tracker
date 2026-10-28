@@ -79,6 +79,11 @@ bool Inputs::isPassCardValid() {
   String gender = config.getPassGender(rfid_.uid.uidByte);
 
   if (gender != "") {
+    // Validate if the race slot are similar to HWPass gender.
+    if (config.slotPassCardGender != gender) {
+      return false;
+    };
+
     beepSuccess();
     config.passCardGender = gender;
     return true;

@@ -29,8 +29,8 @@ void DisplayOutputs::initialize() {
   // This results to conflicts as ESP32 only accepts 2.4G and not 5G. Another
   // thing, when use smartphone as proxy for router's behalf, expects automatic
   // BAND bind of hotspot depending where the smartphone is connected.
-  const char *ssid = "iss4";
-  const char *password = "robincarl";
+  const char *ssid = "Robotics Lab 4";
+  const char *password = "ALTAIR-2027";
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
